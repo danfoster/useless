@@ -1,51 +1,142 @@
-#include "LowPower.h"
+#include <avr/interrupt.h>
+#include <avr/power.h>
+#include <avr/sleep.h>
+#include <avr/io.h>
+#include <avr/wdt.h>
+#include <avr/pgmspace.h>
 
-// Use pin 2 as wake up pin
-const int wakeUpPin = 2;
-const int motorForwardPin = 3;
-const int motorBackPin = 5;
 
-// the setup function runs once when you press reset or power the board
-void setup()
-{
-    // initialize digital pin LED_BUILTIN as an output.
-    pinMode(motorForwardPin, OUTPUT);
-    pinMode(LED_BUILTIN, OUTPUT);
-    pinMode(wakeUpPin, INPUT);
+const byte interruptPin = 2; 
+const byte reverseStopPin = 8; 
+const byte forwardPin = 6;
+const byte backwardPin = 5;
 
-    Serial.begin(115200); // open the serial port at 9600 bps:
-    Serial.print("Hello\n");
+void setup() {
+  // put your setup code here, to run once:
+  Serial.begin(9600);
+  pinMode (forwardPin, OUTPUT);
+  pinMode (backwardPin, OUTPUT);
+  pinMode (interruptPin, INPUT_PULLUP);
+  pinMode (reverseStopPin, INPUT_PULLUP);
+  randomSeed(analogRead(0));
+  Serial.print("***********************\n");
+  Serial.print("Ready\n");
 }
 
-void wakeUp()
-{
-    // Just a handler for the pin interrupt.
+void loop() {
+  // digitalWrite(ledPin, LOW);
+  Serial.print("Sleepy Time\n");
+  delay(500);
+  sleepNow(); // Call the sleep routine: sleepNow()    
+  Serial.print("Good Morning\n");
+  if (!digitalRead(interruptPin)) {
+    delay(random(1000));
+    forwardMovement();
+    delay(random(1000));
+    backwardMovement();
+  }
+  
 }
 
-// the loop function runs over and over again forever
-void loop()
-{
-    digitalWrite(LED_BUILTIN, LOW); // turn the LED off by making the voltage LOW
-    analogWrite(motorForwardPin, 0);
-    attachInterrupt(0, wakeUp, LOW);
+void move(int dir) {
+  switch (dir) {
+  case 1:
+    analogWrite(backwardPin, 0);
+    analogWrite(forwardPin, 255);
+    break;
+  case -1:
+    analogWrite(backwardPin, 255);
+    analogWrite(forwardPin, 0);
+    break;
+  default:
+    analogWrite(backwardPin, 0);
+    analogWrite(forwardPin, 0);
+    break;
+  }
 
-    // Enter power down state with ADC and BOD module disabled.
-    // Wake up when wake up pin is low.
-    Serial.print("Sleep Time\n");
+}
+
+void forwardMovement() {
+  switch (random(3)) {
+  case 0:
+    forwardMovement1();
+    break;
+  case 1:
+    forwardMovement2();
+    break;
+  case 2:
+    forwardMovement3();
+    break;
+  }
+  // forwardMovement2();
+}
+
+void forwardMovement1() {
+  // Simple movement that mimics the
+  // original simple circuit
+  Serial.println("Triggering Movement 1");
+  move(1);
+  while (!digitalRead(interruptPin)) {
+    delay(10);
+  }
+  move(0);
+}
+
+void forwardMovement2() {
+  // Creep out a little bit, pause and then continue
+  Serial.println("Triggering Movement 2");
+  move(1);
+  delay(300);
+  move(0);
+  delay(random(2000));
+  move(1);
+  while (!digitalRead(interruptPin)) {
+    delay(10);
+  }
+  move(0);
+}
+
+void forwardMovement3() {
+ 
+  Serial.println("Triggering Movement 3");
+  for (int i=0;i<10; i++) {
+    move(1);
+    delay(300);
+    move(-1);
+    delay(300);
+  }
+  move(1);
+  while (!digitalRead(interruptPin)) {
+    delay(10);
+  }
+  move(0);
+}
+
+void backwardMovement() {
+  move(-1);
+
+  while (digitalRead(reverseStopPin) == HIGH) {
     delay(100);
-    LowPower.powerDown(SLEEP_FOREVER, ADC_OFF, BOD_OFF);
-    Serial.print("Good Morning\n");
-
-    // Disable external pin interrupt on wake up pin.
-    detachInterrupt(0);
-
-    digitalWrite(LED_BUILTIN, HIGH); // turn the LED on (HIGH is the voltage level)
-    analogWrite(motorForwardPin, 255);
-    while (digitalRead(wakeUpPin) == LOW)
-    {
-    }
-    analogWrite(motorForwardPin, 0);
-    analogWrite(motorBackPin, 255);
-    delay(400);
-    analogWrite(motorBackPin, 0);
+  }
+  move(0);
 }
+
+//Wakeup routine, triggered by the PIR (movement sensor) connected on pin 2
+void Wakeup_Routine()
+{
+  sleep_disable();
+  detachInterrupt(digitalPinToInterrupt(interruptPin));
+}
+
+void sleepNow ()
+{
+  cli(); //disable interrupts
+  sleep_enable (); // enables the sleep bit in the mcucr register
+  attachInterrupt (digitalPinToInterrupt(interruptPin), Wakeup_Routine, FALLING); // wake up on RISING level on D2
+  set_sleep_mode (SLEEP_MODE_PWR_DOWN);  
+  ADCSRA = 0; //disable the ADC
+  sleep_bod_disable(); //save power                                              
+  sei(); //enable interrupts
+  sleep_cpu (); // here the device is put to sleep
+}  
+ 
